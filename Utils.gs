@@ -230,6 +230,33 @@ function saveBaseline() {
   SpreadsheetApp.getUi().alert('✅ Baseline "' + ts + '" saved as a new sheet.');
 }
 
+// ── Debug helper ──────────────────────────────────────────────────────────────
+/**
+ * Run this from Apps Script editor to diagnose getRowTree issues.
+ * Check the Execution Log (View → Logs) for output.
+ */
+function debugGetRowTree() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  Logger.log('=== All sheets ===');
+  sheets.forEach(function(s) {
+    Logger.log('  Sheet: "' + s.getName() + '" rows=' + s.getLastRow() + ' cols=' + s.getLastColumn());
+    if (s.getLastRow() > 0 && s.getLastColumn() > 0) {
+      var h = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+      Logger.log('    Headers: ' + JSON.stringify(h));
+      if (s.getLastRow() > 1) {
+        var r = s.getRange(2, 1, 1, s.getLastColumn()).getValues()[0];
+        Logger.log('    Row 2:   ' + JSON.stringify(r));
+      }
+    }
+  });
+  Logger.log('=== Active sheet: ' + ss.getActiveSheet().getName() + ' ===');
+  var rows = getRowTree();
+  Logger.log('getRowTree returned ' + rows.length + ' rows');
+  if (rows.length > 0) Logger.log('First row: ' + JSON.stringify(rows[0]));
+  SpreadsheetApp.getUi().alert('Debug complete. Check View → Logs.\n\ngetRowTree returned ' + rows.length + ' rows from sheet: "' + ss.getActiveSheet().getName() + '"');
+}
+
 // ── Install triggers ──────────────────────────────────────────────────────────
 /**
  * Call once from the menu (or run manually) to install the onEdit + onOpen triggers.
