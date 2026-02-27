@@ -133,7 +133,14 @@ function init() {
         var opt = document.createElement('option');
         opt.value = a; opt.text = a; sel.appendChild(opt);
       });
+      if (!allTasks.length) {
+        document.querySelector('.grid').innerHTML = '<div style="padding:60px;text-align:center;color:#9aa0a6;font-size:14px;grid-column:1/-1">No tasks found.<br><small>Make sure your sheet has a <b>Task Name</b> header in column D.</small></div>';
+        return;
+      }
       renderAll();
+    })
+    .withFailureHandler(function(err) {
+      document.querySelector('.grid').innerHTML = '<div style="padding:40px;text-align:center;color:#ef5350;font-size:13px;grid-column:1/-1">❌ Error: ' + (err.message || err) + '</div>';
     })
     .getRowTree();
 }

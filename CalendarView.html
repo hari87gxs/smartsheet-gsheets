@@ -125,7 +125,14 @@ function init() {
         var opt = document.createElement('option');
         opt.value = a; opt.text = a; sel.appendChild(opt);
       });
+      if (!allTasks.length) {
+        document.getElementById('calendar').innerHTML = '<div style="padding:60px;text-align:center;color:#9aa0a6;font-size:14px">No tasks with dates found.<br><small>Make sure your sheet has <b>Start Date</b> or <b>End Date</b> columns.</small></div>';
+        return;
+      }
       renderCurrent();
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('calendar').innerHTML = '<div style="padding:40px;text-align:center;color:#ef5350;font-size:13px">❌ Error: ' + (err.message || err) + '</div>';
     })
     .getRowTree();
 }

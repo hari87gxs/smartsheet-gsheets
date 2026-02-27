@@ -87,8 +87,16 @@ var PRIORITY_COLOR = {Critical:'p-critical',High:'p-high',Medium:'p-medium',Low:
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 function loadData() {
+  document.getElementById('board').innerHTML = '<div style="padding:60px;text-align:center;color:#9aa0a6;font-size:14px">⏳ Loading tasks…</div>';
   google.script.run
+    .withFailureHandler(function(err) {
+      document.getElementById('board').innerHTML = '<div style="padding:40px;text-align:center;color:#ef5350;font-size:13px">❌ Error: ' + (err.message || err) + '</div>';
+    })
     .withSuccessHandler(function(rows) {
+      if (!rows || rows.length === 0) {
+        document.getElementById('board').innerHTML = '<div style="padding:60px;text-align:center;color:#9aa0a6;font-size:14px">No tasks found.<br><small>Make sure your sheet has a <b>Task Name</b> header in column D.</small></div>';
+        return;
+      }
       allTasks = rows.map(function(r) {
         return {
           id:       r._rowIndex,
