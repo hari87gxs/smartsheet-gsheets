@@ -17,53 +17,63 @@ var SYSTEM_SHEET     = '_PS_META';
  * @param {Sheet} [sheet] — defaults to active sheet
  */
 function getRowTree(sheet) {
-  // If no sheet passed, use active — but skip system sheets
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Find the right sheet: prefer active, fall back to first non-system sheet with data
   if (!sheet) {
-    sheet = SpreadsheetApp.getActiveSheet();
-    if (sheet && sheet.getName().startsWith('_PS_')) {
-      // Active sheet is a hidden system sheet — fall back to first user sheet
-      var userSheets = SpreadsheetApp.getActiveSpreadsheet().getSheets()
-        .filter(function(s){ return !s.getName().startsWith('_PS_'); });
-      sheet = userSheets.length ? userSheets[0] : null;
-    }
+    sheet = ss.getActiveSheet();
   }
-
-  if (!sheet) return [];
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) return [];
-
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-
-  // Auto-detect whether system columns A/B/C are present.
-  // System cols have empty headers in row 1; user data starts at col D (index 3).
-  // If row 1 col A has content (a real header), treat all columns as user data.
-  var hasSystemCols = (headers[0] === '' && (lastCol < 2 || headers[1] === ''));
-  var dataColStart  = hasSystemCols ? 3 : 0;
-
-  var data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
-
-  return data.map(function(row, i) {
-    var obj = {
-      _rowIndex: i + 2,
-      _indent:   hasSystemCols ? (Number(row[0]) || 0) : 0,
-      _id:       hasSystemCols ? (String(row[1] || '')) : String(i + 2),
-      _locked:   hasSystemCols ? (!!row[2]) : false
-    };
-    for (var c = dataColStart; c < headers.length; c++) {
-      if (headers[c]) {          // skip unnamed/empty-header columns
-        obj[headers[c]] = row[c];
+  if (!sheet || sheet.getName().startsWith('_PS_') || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) {
+    var allSheets = ss.getSheets();
+    sheet = null;
+    for (var si = 0; si < allSheets.length; si++) {
+      var s = allSheets[si];
+      if (!s.getName().startsWith('_PS_') && s.getLastRow() >= 2 && s.getLastColumn() >= 1) {
+        sheet = s;
+        break;
       }
     }
-    return obj;
-  }).filter(function(r) {
-    // Keep rows that have at least one non-empty user field
-    return Object.keys(r).some(function(k) {
-      if (k.startsWith('_')) return false;
-      var v = r[k];
-      return v !== '' && v !== null && v !== undefined;
-    });
-  });
+  }
+  if (!sheet) return [];
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+
+  // Read everything in one call for efficiency
+  var allValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers   = allValues[0].map(String);
+
+  // Detect system columns A/B/C — they are either blank headers OR named _indent/_id/_locked
+  var h0 = headers[0];
+  var hasSystemCols = (h0 === '' || h0 === '_indent' || h0 === 'indent');
+  var dataColStart  = hasSystemCols ? 3 : 0;
+
+  var result = [];
+  for (var r = 1; r < allValues.length; r++) {
+    var row = allValues[r];
+    var obj = {
+      _rowIndex: r + 1,
+      _indent:   hasSystemCols ? (Number(row[0]) || 0) : 0,
+      _id:       hasSystemCols ? String(row[1] || (r + 1)) : String(r + 1),
+      _locked:   hasSystemCols ? (row[2] === true || row[2] === 'TRUE') : false
+    };
+
+    var hasData = false;
+    for (var c = dataColStart; c < headers.length; c++) {
+      var key = headers[c];
+      if (!key || key.charAt(0) === '_') continue;   // skip blank or system-named cols
+      var val = row[c];
+      // ★ Convert Date objects to ISO strings — required for google.script.run serialization
+      if (val instanceof Date) {
+        val = isNaN(val.getTime()) ? '' : val.toISOString();
+      }
+      obj[key] = val;
+      if (val !== '' && val !== null && val !== undefined) hasData = true;
+    }
+
+    if (hasData) result.push(obj);
+  }
+  return result;
 }
 
 // ── updateTaskStatus ──────────────────────────────────────────────────────────
