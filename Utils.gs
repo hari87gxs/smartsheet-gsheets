@@ -17,24 +17,52 @@ var SYSTEM_SHEET     = '_PS_META';
  * @param {Sheet} [sheet] — defaults to active sheet
  */
 function getRowTree(sheet) {
-  sheet = sheet || SpreadsheetApp.getActiveSheet();
-  if (!sheet || sheet.getLastRow() < DATA_START_ROW) return [];
+  // If no sheet passed, use active — but skip system sheets
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSheet();
+    if (sheet && sheet.getName().startsWith('_PS_')) {
+      // Active sheet is a hidden system sheet — fall back to first user sheet
+      var userSheets = SpreadsheetApp.getActiveSpreadsheet().getSheets()
+        .filter(function(s){ return !s.getName().startsWith('_PS_'); });
+      sheet = userSheets.length ? userSheets[0] : null;
+    }
+  }
 
-  var lastCol = sheet.getLastColumn();
+  if (!sheet) return [];
   var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-  var data    = sheet.getRange(DATA_START_ROW, 1, lastRow - DATA_START_ROW + 1, lastCol).getValues();
+
+  // Auto-detect whether system columns A/B/C are present.
+  // System cols have empty headers in row 1; user data starts at col D (index 3).
+  // If row 1 col A has content (a real header), treat all columns as user data.
+  var hasSystemCols = (headers[0] === '' && (lastCol < 2 || headers[1] === ''));
+  var dataColStart  = hasSystemCols ? 3 : 0;
+
+  var data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
   return data.map(function(row, i) {
-    var obj = { _rowIndex: i + DATA_START_ROW, _indent: row[0] || 0,
-                _id: row[1] || '', _locked: row[2] || false };
-    for (var c = 3; c < headers.length; c++) {
-      obj[headers[c]] = row[c];
+    var obj = {
+      _rowIndex: i + 2,
+      _indent:   hasSystemCols ? (Number(row[0]) || 0) : 0,
+      _id:       hasSystemCols ? (String(row[1] || '')) : String(i + 2),
+      _locked:   hasSystemCols ? (!!row[2]) : false
+    };
+    for (var c = dataColStart; c < headers.length; c++) {
+      if (headers[c]) {          // skip unnamed/empty-header columns
+        obj[headers[c]] = row[c];
+      }
     }
     return obj;
   }).filter(function(r) {
-    // Filter out completely empty rows
-    return Object.keys(r).some(function(k) { return !k.startsWith('_') && r[k] !== ''; });
+    // Keep rows that have at least one non-empty user field
+    return Object.keys(r).some(function(k) {
+      if (k.startsWith('_')) return false;
+      var v = r[k];
+      return v !== '' && v !== null && v !== undefined;
+    });
   });
 }
 
