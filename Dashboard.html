@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e8eaed;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+  #toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#16213e;border-bottom:1px solid #0f3460;flex-shrink:0;}
+  #toolbar h2{font-size:15px;color:#4fc3f7;margin-right:auto;}
+  .tb-btn{background:#0f3460;border:none;color:#e8eaed;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;}
+  .tb-btn:hover{background:#1a73e8;}
+  select{background:#0f3460;border:1px solid #1a73e8;color:#e8eaed;padding:5px 10px;border-radius:6px;font-size:12px;}
+
+  #dash{flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:auto auto 1fr auto;gap:16px;}
+
+  /* Stat cards */
+  .stat-card{background:#16213e;border-radius:12px;padding:16px 20px;border:1px solid #0f3460;display:flex;flex-direction:column;gap:6px;}
+  .stat-card .label{font-size:11px;color:#9aa0a6;font-weight:600;text-transform:uppercase;}
+  .stat-card .value{font-size:32px;font-weight:800;color:#4fc3f7;}
+  .stat-card .sub{font-size:11px;color:#9aa0a6;}
+  .stat-card .trend{font-size:12px;}
+  .trend-up{color:#66bb6a;}.trend-dn{color:#ef5350;}
+
+  /* Charts */
+  .chart-card{background:#16213e;border-radius:12px;padding:16px;border:1px solid #0f3460;}
+  .chart-card h3{font-size:13px;color:#9aa0a6;margin-bottom:14px;font-weight:600;}
+  canvas{display:block;}
+
+  .donut-wrap{display:flex;align-items:center;gap:20px;}
+  .donut-legend{display:flex;flex-direction:column;gap:8px;flex:1;}
+  .legend-row{display:flex;align-items:center;gap:8px;font-size:12px;}
+  .legend-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+
+  /* Bar chart */
+  .bar-chart{display:flex;flex-direction:column;gap:8px;}
+  .bar-row{display:flex;align-items:center;gap:10px;font-size:12px;}
+  .bar-name{width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#9aa0a6;}
+  .bar-track{flex:1;height:14px;background:#0f3460;border-radius:7px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#1a73e8,#4fc3f7);}
+  .bar-cnt{width:30px;text-align:right;font-weight:600;}
+
+  /* Deadlines */
+  .deadline-list{display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:200px;}
+  .dl-row{display:flex;align-items:center;gap:10px;font-size:12px;padding:8px 10px;background:#0d1b2a;border-radius:8px;}
+  .dl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .dl-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .dl-date{color:#9aa0a6;white-space:nowrap;}
+  .dl-overdue{color:#ef5350;}
+
+  /* Span helpers */
+  .span2{grid-column:span 2;}
+  .span4{grid-column:span 4;}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h2>📊 Dashboard</h2>
+  <select id="filterAssignee" onchange="renderAll()">
+    <option value="">All Assignees</option>
+  </select>
+  <button class="tb-btn" onclick="google.script.host.close()">✕ Close</button>
+</div>
+
+<div id="dash">
+  <!-- Stat cards row 1 -->
+  <div class="stat-card" id="sc-total"><div class="label">Total Tasks</div><div class="value" id="v-total">…</div><div class="sub">In this project</div></div>
+  <div class="stat-card" id="sc-done"><div class="label">Completed</div><div class="value" id="v-done" style="color:#66bb6a">…</div><div class="sub" id="v-pct"></div></div>
+  <div class="stat-card" id="sc-prog"><div class="label">In Progress</div><div class="value" id="v-prog" style="color:#4fc3f7">…</div><div class="sub" id="v-blocked"></div></div>
+  <div class="stat-card" id="sc-over"><div class="label">Overdue</div><div class="value" id="v-over" style="color:#ef5350">…</div><div class="sub">Past due date</div></div>
+
+  <!-- Donut + Assignee bar -->
+  <div class="chart-card">
+    <h3>Status Breakdown</h3>
+    <div class="donut-wrap">
+      <canvas id="donut" width="120" height="120"></canvas>
+      <div class="donut-legend" id="donut-legend"></div>
+    </div>
+  </div>
+
+  <div class="chart-card span2">
+    <h3>Tasks by Assignee</h3>
+    <div class="bar-chart" id="assignee-bars"></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Priority Mix</h3>
+    <div class="bar-chart" id="priority-bars"></div>
+  </div>
+
+  <!-- Upcoming deadlines -->
+  <div class="chart-card span2">
+    <h3>⏰ Upcoming Deadlines (next 14 days)</h3>
+    <div class="deadline-list" id="deadline-list"></div>
+  </div>
+
+  <!-- Blocked -->
+  <div class="chart-card span2">
+    <h3>🚨 Blocked Items</h3>
+    <div class="deadline-list" id="blocked-list"></div>
+  </div>
+
+  <!-- Weekly velocity bar -->
+  <div class="chart-card span4">
+    <h3>Weekly Completion Rate</h3>
+    <canvas id="velocity" width="900" height="100"></canvas>
+  </div>
+</div>
+
+<script>
+var allTasks = [];
+
+function init() {
+  google.script.run
+    .withSuccessHandler(function(rows) {
+      allTasks = rows.map(function(r) {
+        return {
+          id:       r._rowIndex,
+          title:    r['Task Name'] || r[Object.keys(r).filter(function(k){return !k.startsWith('_');})[0]] || '(unnamed)',
+          status:   r['Status'] || 'To Do',
+          assignee: r['Assigned To'] || '',
+          priority: r['Priority'] || 'Medium',
+          due:      r['Due Date'] ? new Date(r['Due Date']) : (r['End Date'] ? new Date(r['End Date']) : null),
+          completed:r['Completed Date'] ? new Date(r['Completed Date']) : null
+        };
+      });
+
+      var sel = document.getElementById('filterAssignee');
+      var assignees = [...new Set(allTasks.map(function(t){return t.assignee;}).filter(Boolean))];
+      assignees.forEach(function(a){
+        var opt = document.createElement('option');
+        opt.value = a; opt.text = a; sel.appendChild(opt);
+      });
+      renderAll();
+    })
+    .getRowTree(SpreadsheetApp.getActiveSheet());
+}
+
+function getFiltered() {
+  var a = document.getElementById('filterAssignee').value;
+  return a ? allTasks.filter(function(t){return t.assignee===a;}) : allTasks;
+}
+
+function renderAll() {
+  var tasks = getFiltered();
+  renderStats(tasks);
+  renderDonut(tasks);
+  renderAssigneeBars(tasks);
+  renderPriorityBars(tasks);
+  renderDeadlines(tasks);
+  renderBlocked(tasks);
+  renderVelocity(tasks);
+}
+
+// ── Stat cards ────────────────────────────────────────────────────────────────
+function renderStats(tasks) {
+  var done     = tasks.filter(function(t){return /done|complete/i.test(t.status);}).length;
+  var inProg   = tasks.filter(function(t){return /progress|review/i.test(t.status);}).length;
+  var blocked  = tasks.filter(function(t){return /blocked/i.test(t.status);}).length;
+  var today    = new Date(); today.setHours(0,0,0,0);
+  var overdue  = tasks.filter(function(t){ return t.due && t.due < today && !/done|complete/i.test(t.status); }).length;
+  var pct      = tasks.length ? Math.round(done/tasks.length*100) : 0;
+
+  document.getElementById('v-total').textContent = tasks.length;
+  document.getElementById('v-done').textContent  = done;
+  document.getElementById('v-pct').textContent   = pct + '% completion rate';
+  document.getElementById('v-prog').textContent  = inProg;
+  document.getElementById('v-blocked').textContent = blocked + ' blocked';
+  document.getElementById('v-over').textContent  = overdue;
+}
+
+// ── Donut ─────────────────────────────────────────────────────────────────────
+var STATUS_COLORS = {
+  'Done':'#66bb6a','Complete':'#66bb6a','Completed':'#66bb6a',
+  'In Progress':'#4fc3f7','In Review':'#ffa726',
+  'To Do':'#9aa0a6','Backlog':'#546e7a',
+  'Blocked':'#ef5350','Cancelled':'#78909c'
+};
+function getStatusColor(s) {
+  for (var k in STATUS_COLORS) { if (s.toLowerCase().includes(k.toLowerCase())) return STATUS_COLORS[k]; }
+  return '#455a64';
+}
+
+function renderDonut(tasks) {
+  var counts = {};
+  tasks.forEach(function(t){ counts[t.status] = (counts[t.status]||0)+1; });
+  var items = Object.keys(counts).map(function(k){return {label:k,count:counts[k],color:getStatusColor(k)};});
+  items.sort(function(a,b){return b.count-a.count;});
+
+  var canvas = document.getElementById('donut');
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,120,120);
+  var total = tasks.length || 1;
+  var cx=60,cy=60,r=52,inner=32;
+  var startAngle = -Math.PI/2;
+  items.forEach(function(it) {
+    var angle = (it.count/total)*Math.PI*2;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,startAngle,startAngle+angle);
+    ctx.closePath();
+    ctx.fillStyle = it.color;
+    ctx.fill();
+    startAngle += angle;
+  });
+  // Hole
+  ctx.beginPath();
+  ctx.arc(cx,cy,inner,0,Math.PI*2);
+  ctx.fillStyle = '#16213e';
+  ctx.fill();
+  // Centre text
+  ctx.fillStyle = '#e8eaed';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.round((tasks.filter(function(t){return /done|complete/i.test(t.status);}).length/total)*100)+'%', cx, cy);
+
+  var legend = document.getElementById('donut-legend');
+  legend.innerHTML = items.slice(0,5).map(function(it) {
+    return '<div class="legend-row"><div class="legend-swatch" style="background:'+it.color+'"></div>' +
+      '<span style="flex:1">'+esc(it.label)+'</span><b>'+it.count+'</b></div>';
+  }).join('');
+}
+
+// ── Assignee bars ─────────────────────────────────────────────────────────────
+function renderAssigneeBars(tasks) {
+  var counts = {};
+  tasks.forEach(function(t){ var k=t.assignee||'Unassigned'; counts[k]=(counts[k]||0)+1; });
+  var items = Object.keys(counts).map(function(k){return{name:k,val:counts[k]};});
+  items.sort(function(a,b){return b.val-a.val;});
+  var max = items.length ? items[0].val : 1;
+  document.getElementById('assignee-bars').innerHTML = items.slice(0,8).map(function(it){
+    return '<div class="bar-row"><div class="bar-name">'+esc(it.name)+'</div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:'+Math.round(it.val/max*100)+'%"></div></div>' +
+      '<div class="bar-cnt">'+it.val+'</div></div>';
+  }).join('');
+}
+
+// ── Priority bars ─────────────────────────────────────────────────────────────
+function renderPriorityBars(tasks) {
+  var order = ['Critical','High','Medium','Low'];
+  var colors = {'Critical':'#ef5350','High':'#ffa726','Medium':'#4fc3f7','Low':'#66bb6a'};
+  var counts = {};
+  tasks.forEach(function(t){ counts[t.priority]=(counts[t.priority]||0)+1; });
+  var max = Math.max.apply(null, order.map(function(o){return counts[o]||0;})) || 1;
+  document.getElementById('priority-bars').innerHTML = order.map(function(p){
+    return '<div class="bar-row"><div class="bar-name" style="color:'+colors[p]+'">'+p+'</div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:'+Math.round((counts[p]||0)/max*100)+'%;background:'+colors[p]+'"></div></div>' +
+      '<div class="bar-cnt">'+(counts[p]||0)+'</div></div>';
+  }).join('');
+}
+
+// ── Deadlines ─────────────────────────────────────────────────────────────────
+function renderDeadlines(tasks) {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var cutoff = new Date(today); cutoff.setDate(cutoff.getDate()+14);
+  var items = tasks.filter(function(t){
+    return t.due && t.due >= today && t.due <= cutoff && !/done|complete/i.test(t.status);
+  }).sort(function(a,b){return a.due-b.due;});
+
+  var el = document.getElementById('deadline-list');
+  el.innerHTML = !items.length ? '<div style="color:#555;font-size:12px;padding:8px">No upcoming deadlines 🎉</div>' :
+    items.slice(0,10).map(function(t) {
+      var diff = Math.round((t.due - today)/(1000*60*60*24));
+      var soon = diff <= 3;
+      return '<div class="dl-row"><div class="dl-dot" style="background:'+(soon?'#ffa726':'#4fc3f7')+'"></div>' +
+        '<div class="dl-title">'+esc(t.title)+'</div>' +
+        '<div class="dl-date">'+(diff===0?'Today':diff===1?'Tomorrow':'in '+diff+'d')+' · '+
+        t.due.toLocaleDateString('en-SG',{day:'2-digit',month:'short'})+'</div></div>';
+    }).join('');
+}
+
+// ── Blocked ───────────────────────────────────────────────────────────────────
+function renderBlocked(tasks) {
+  var items = tasks.filter(function(t){return /blocked/i.test(t.status);});
+  var el = document.getElementById('blocked-list');
+  el.innerHTML = !items.length ? '<div style="color:#555;font-size:12px;padding:8px">No blocked items ✅</div>' :
+    items.map(function(t){
+      return '<div class="dl-row"><div class="dl-dot" style="background:#ef5350"></div>' +
+        '<div class="dl-title">'+esc(t.title)+'</div>' +
+        '<div class="dl-date dl-overdue">BLOCKED</div></div>';
+    }).join('');
+}
+
+// ── Velocity ──────────────────────────────────────────────────────────────────
+function renderVelocity(tasks) {
+  var canvas = document.getElementById('velocity');
+  canvas.width = canvas.parentElement.clientWidth - 32;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,100);
+
+  // Count completions by week (last 8 weeks)
+  var weeks = [];
+  var today = new Date(); today.setHours(0,0,0,0);
+  for (var w=7;w>=0;w--) {
+    var ws = new Date(today); ws.setDate(ws.getDate() - w*7 - today.getDay());
+    var we = new Date(ws); we.setDate(we.getDate()+7);
+    var cnt = tasks.filter(function(t){
+      return t.completed && t.completed >= ws && t.completed < we;
+    }).length;
+    // Estimate from status when completed date absent
+    if (!cnt && w===0) cnt = tasks.filter(function(t){return /done|complete/i.test(t.status);}).length;
+    weeks.push({label: ws.toLocaleDateString('en-SG',{month:'short',day:'numeric'}), cnt: cnt});
+  }
+  var maxCnt = Math.max.apply(null, weeks.map(function(w){return w.cnt;})) || 1;
+  var colW = Math.floor(canvas.width / weeks.length);
+  var barMaxH = 68;
+
+  weeks.forEach(function(wk, i) {
+    var barH = Math.max(2, Math.round(wk.cnt/maxCnt*barMaxH));
+    var x = i * colW + colW*0.15;
+    var bw = colW * 0.7;
+    var grad = ctx.createLinearGradient(0, 100-barH, 0, 100);
+    grad.addColorStop(0,'#1a73e8');
+    grad.addColorStop(1,'#0d3060');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, 100-barH-20, bw, barH, [4,4,0,0]);
+    ctx.fill();
+    // Count label
+    if (wk.cnt > 0) {
+      ctx.fillStyle = '#4fc3f7';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(wk.cnt, x + bw/2, 100-barH-24);
+    }
+    // Week label
+    ctx.fillStyle = '#9aa0a6';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(wk.label, x + bw/2, 100);
+  });
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

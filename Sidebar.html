@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Settings</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e8eaed;font-size:13px;padding:0;}
+  #header{padding:16px;background:#16213e;border-bottom:1px solid #0f3460;}
+  #header h2{font-size:16px;color:#4fc3f7;}
+  #header p{font-size:11px;color:#9aa0a6;margin-top:4px;}
+  #body{padding:16px;display:flex;flex-direction:column;gap:16px;}
+  .card{background:#16213e;border-radius:10px;padding:14px;border:1px solid #0f3460;}
+  .card h3{font-size:11px;font-weight:700;color:#9aa0a6;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;}
+  .field{margin-bottom:10px;}
+  label{display:block;font-size:11px;color:#9aa0a6;margin-bottom:3px;}
+  input,select{width:100%;background:#0d1b2a;border:1px solid #0f3460;color:#e8eaed;padding:7px 10px;border-radius:6px;font-size:12px;outline:none;}
+  input:focus,select:focus{border-color:#1a73e8;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .btn{width:100%;padding:9px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;margin-top:4px;}
+  .btn-primary{background:#1a73e8;color:#fff;}.btn-primary:hover{background:#1557c0;}
+  .btn-secondary{background:#0f3460;color:#e8eaed;}.btn-secondary:hover{background:#16213e;border:1px solid #1a73e8;}
+  .btn-danger{background:#2d1212;color:#ef5350;}.btn-danger:hover{background:#ef5350;color:#fff;}
+  .divider{border:none;border-top:1px solid #0f3460;margin:4px 0;}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0;}
+  .toggle-label{font-size:12px;}
+  .toggle{position:relative;width:40px;height:20px;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;cursor:pointer;inset:0;background:#0f3460;border-radius:10px;transition:.3s;}
+  .slider:before{position:absolute;content:"";height:14px;width:14px;left:3px;top:3px;background:#9aa0a6;border-radius:50%;transition:.3s;}
+  input:checked+.slider{background:#1a73e8;}
+  input:checked+.slider:before{transform:translateX(20px);background:#fff;}
+  .version{text-align:center;font-size:10px;color:#555;padding:8px;}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .stat-box{background:#0d1b2a;border-radius:8px;padding:10px;text-align:center;}
+  .stat-val{font-size:22px;font-weight:800;color:#4fc3f7;}
+  .stat-lbl{font-size:10px;color:#9aa0a6;margin-top:2px;}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1a73e8;color:#fff;padding:8px 18px;border-radius:20px;font-size:12px;display:none;z-index:999;}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h2>⚙️ ProjectSheet Settings</h2>
+  <p id="sheet-name" style="color:#4fc3f7"></p>
+</div>
+
+<div id="body">
+
+  <!-- Project stats -->
+  <div class="card">
+    <h3>📊 Current Project</h3>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val" id="s-total">–</div><div class="stat-lbl">Total Tasks</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-done" style="color:#66bb6a">–</div><div class="stat-lbl">Done</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-prog" style="color:#4fc3f7">–</div><div class="stat-lbl">In Progress</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-blocked" style="color:#ef5350">–</div><div class="stat-lbl">Blocked</div></div>
+    </div>
+  </div>
+
+  <!-- Quick actions -->
+  <div class="card">
+    <h3>🚀 Quick Actions</h3>
+    <button class="btn btn-primary" onclick="run('openGanttView')">📊 Open Gantt</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('openKanbanView')">🃏 Open Kanban</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('openDashboard')">📈 Dashboard</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('openCalendarView')">📅 Calendar</button>
+  </div>
+
+  <!-- Project setup -->
+  <div class="card">
+    <h3>🛠️ Setup</h3>
+    <button class="btn btn-secondary" onclick="run('setupBlankProject')">➕ New Blank Project</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('setupGanttProject')">📊 Gantt Template</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('setupKanbanProject')">🃏 Kanban Template</button>
+    <hr class="divider" style="margin:10px 0">
+    <button class="btn btn-secondary" onclick="run('openAutomationBuilder')">⚡ Automation Rules</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('openActivityLog')">📋 Activity Log</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="run('installTriggers')">🔧 Install Triggers</button>
+  </div>
+
+  <!-- Preferences -->
+  <div class="card">
+    <h3>⚙️ Preferences</h3>
+    <div class="toggle-row">
+      <span class="toggle-label">Auto-log changes</span>
+      <label class="toggle"><input type="checkbox" id="pref-autolog" checked><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Email on Status change</span>
+      <label class="toggle"><input type="checkbox" id="pref-email"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Compact row height</span>
+      <label class="toggle"><input type="checkbox" id="pref-compact"><span class="slider"></span></label>
+    </div>
+    <hr class="divider" style="margin:10px 0">
+    <div class="field">
+      <label>Default Assignee</label>
+      <input type="text" id="pref-assignee" placeholder="e.g. you@example.com">
+    </div>
+    <div class="field">
+      <label>Date Format</label>
+      <select id="pref-datefmt">
+        <option>DD/MM/YYYY</option>
+        <option>MM/DD/YYYY</option>
+        <option>YYYY-MM-DD</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" style="margin-top:8px" onclick="savePrefs()">Save Preferences</button>
+  </div>
+
+  <!-- Danger zone -->
+  <div class="card">
+    <h3>⚠️ Danger Zone</h3>
+    <button class="btn btn-danger" onclick="confirmAction('saveBaseline','Save a baseline snapshot first?')">📸 Save Baseline</button>
+    <button class="btn btn-danger" style="margin-top:6px" onclick="confirmAction('exportPDF','Export full sheet as PDF?')">📄 Export PDF</button>
+  </div>
+
+</div>
+<div class="version">ProjectSheet Pro v1.0 · Google Apps Script</div>
+<div class="toast" id="toast"></div>
+
+<script>
+function init() {
+  google.script.run.withSuccessHandler(function(meta) {
+    if (meta && meta.name) document.getElementById('sheet-name').textContent = '📄 ' + meta.name;
+  }).getProjectMeta();
+
+  google.script.run.withSuccessHandler(function(stats) {
+    if (!stats) return;
+    document.getElementById('s-total').textContent   = stats.total;
+    document.getElementById('s-done').textContent    = stats.done;
+    document.getElementById('s-prog').textContent    = stats.inProgress;
+    document.getElementById('s-blocked').textContent = stats.blocked;
+  }).getProjectStats();
+}
+
+function run(fn) {
+  google.script.run.withSuccessHandler(function(){
+    showToast('Done!');
+  })[fn]();
+}
+
+function confirmAction(fn, msg) {
+  if (confirm(msg)) run(fn);
+}
+
+function savePrefs() {
+  showToast('Preferences saved ✓');
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(function(){ t.style.display = 'none'; }, 2500);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

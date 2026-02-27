@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Automation Rules</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e8eaed;height:100vh;display:flex;flex-direction:column;font-size:13px;}
+
+  #toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#16213e;border-bottom:1px solid #0f3460;flex-shrink:0;}
+  #toolbar h2{font-size:15px;color:#4fc3f7;margin-right:auto;}
+  .tb-btn{background:#0f3460;border:none;color:#e8eaed;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;}
+  .tb-btn:hover,.tb-btn.primary{background:#1a73e8;}
+
+  #main{flex:1;display:flex;overflow:hidden;}
+  #rule-list{width:280px;flex-shrink:0;border-right:1px solid #0f3460;display:flex;flex-direction:column;}
+  #rule-list-header{padding:12px;display:flex;gap:8px;border-bottom:1px solid #0f3460;}
+  #rule-items{flex:1;overflow-y:auto;}
+  .rule-item{padding:12px 14px;border-bottom:1px solid #0a1a2e;cursor:pointer;display:flex;align-items:center;gap:10px;}
+  .rule-item:hover{background:#16213e;}
+  .rule-item.selected{background:#0f2033;border-left:3px solid #1a73e8;}
+  .ri-name{flex:1;font-weight:600;font-size:12px;}
+  .ri-sub{font-size:10px;color:#9aa0a6;margin-top:2px;}
+  .toggle{position:relative;width:34px;height:18px;flex-shrink:0;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;cursor:pointer;inset:0;background:#0f3460;border-radius:9px;transition:.3s;}
+  .slider:before{position:absolute;content:"";height:12px;width:12px;left:3px;top:3px;background:#9aa0a6;border-radius:50%;transition:.3s;}
+  input:checked+.slider{background:#1a73e8;}
+  input:checked+.slider:before{transform:translateX(16px);background:#fff;}
+
+  #editor{flex:1;overflow-y:auto;padding:20px;}
+  #editor.empty{display:flex;align-items:center;justify-content:center;color:#555;}
+
+  h3{font-size:13px;color:#9aa0a6;margin-bottom:12px;margin-top:0;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+  .field{margin-bottom:14px;}
+  label{display:block;font-size:11px;color:#9aa0a6;margin-bottom:4px;font-weight:600;}
+  input[type="text"],select,textarea{width:100%;background:#0d1b2a;border:1px solid #0f3460;color:#e8eaed;padding:7px 10px;border-radius:6px;font-size:12px;outline:none;font-family:inherit;}
+  input[type="text"]:focus,select:focus,textarea:focus{border-color:#1a73e8;}
+  textarea{resize:vertical;min-height:80px;}
+  select option{background:#0d1b2a;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .section{background:#16213e;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #0f3460;}
+  .section-title{font-size:11px;font-weight:700;color:#4fc3f7;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;margin-right:4px;}
+  .hint{font-size:11px;color:#555;margin-top:4px;}
+  .actions-bar{display:flex;gap:10px;padding:16px;border-top:1px solid #0f3460;background:#1a1a2e;flex-shrink:0;}
+  .empty-state{text-align:center;padding:40px;color:#555;}
+  .empty-state h3{font-size:20px;margin-bottom:8px;color:#9aa0a6;}
+  .tag-vars{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .tag-var{background:#0f3460;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;color:#9aa0a6;}
+  .tag-var:hover{background:#1a73e8;color:#fff;}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h2>⚡ Automation Rules</h2>
+  <button class="tb-btn primary" onclick="newRule()">+ New Rule</button>
+  <button class="tb-btn" onclick="google.script.host.close()">✕ Close</button>
+</div>
+
+<div id="main">
+  <div id="rule-list">
+    <div id="rule-list-header">
+      <span style="color:#9aa0a6;font-size:11px;font-weight:600;">RULES</span>
+      <span id="rule-count" style="margin-left:auto;color:#555;font-size:11px"></span>
+    </div>
+    <div id="rule-items"></div>
+  </div>
+
+  <div id="editor">
+    <div class="empty-state" id="empty-msg">
+      <h3>⚡</h3>
+      <p>Select a rule to edit, or create a new one.</p>
+      <p style="margin-top:8px;font-size:12px">Automate repetitive tasks — send emails, update fields, or lock rows when conditions are met.</p>
+    </div>
+    <div id="editor-form" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="actions-bar" id="actions-bar" style="display:none;">
+  <button class="tb-btn primary" onclick="saveRule()">💾 Save Rule</button>
+  <button class="tb-btn" onclick="deleteRule()" style="background:#2d1212;color:#ef5350;">🗑 Delete</button>
+  <button class="tb-btn" onclick="clearEditor()" style="margin-left:auto;">Cancel</button>
+</div>
+
+<script>
+var rules = [];
+var currentRuleId = null;
+
+var TRIGGERS = [
+  {value:'FIELD_CHANGED',  label:'When a field changes'},
+  {value:'STATUS_CHANGED', label:'When Status changes'},
+  {value:'ROW_ADDED',      label:'When a row is added'},
+  {value:'DATE_REACHED',   label:'When a date is reached'}
+];
+var ACTIONS = [
+  {value:'SEND_EMAIL',   label:'Send an email'},
+  {value:'CHANGE_STATUS',label:'Change a field value'},
+  {value:'SET_FIELD',    label:'Set another field'},
+  {value:'ADD_COMMENT',  label:'Add a note/comment'},
+  {value:'LOCK_ROW',     label:'Lock the row'},
+  {value:'CALL_WEBHOOK', label:'Call a webhook'}
+];
+var OPERATORS = [
+  {value:'equals',       label:'equals'},
+  {value:'not_equals',   label:'does not equal'},
+  {value:'contains',     label:'contains'},
+  {value:'greater_than', label:'is greater than'},
+  {value:'less_than',    label:'is less than'},
+  {value:'is_empty',     label:'is empty'},
+  {value:'is_not_empty', label:'is not empty'}
+];
+var WHEN_OPTIONS = [
+  {value:'on_date',    label:'On the date'},
+  {value:'days_before',label:'X days before'},
+  {value:'days_after', label:'X days after'}
+];
+var TEMPLATE_VARS = ['{{task_name}}','{{assigned_to}}','{{status}}','{{sheet_name}}','{{sheet_url}}'];
+
+function init() {
+  google.script.run.withSuccessHandler(function(data) {
+    rules = data || [];
+    renderRuleList();
+  }).getAllAutomations();
+}
+
+function renderRuleList() {
+  var el = document.getElementById('rule-items');
+  document.getElementById('rule-count').textContent = rules.length + ' rule' + (rules.length!==1?'s':'');
+  el.innerHTML = rules.map(function(r) {
+    var trig = (TRIGGERS.find(function(t){return t.value===r.triggerType;})||{}).label || r.triggerType;
+    return '<div class="rule-item' + (r.id===currentRuleId?' selected':'') + '" onclick="selectRule(\''+r.id+'\')">' +
+      '<div style="flex:1">' +
+      '<div class="ri-name">'+esc(r.name||'Unnamed Rule')+'</div>' +
+      '<div class="ri-sub">'+esc(trig)+'</div></div>' +
+      '<label class="toggle"><input type="checkbox"'+(r.enabled?'checked':'')+' onchange="toggleRule(\''+r.id+'\',this.checked)" onclick="event.stopPropagation()">' +
+      '<span class="slider"></span></label></div>';
+  }).join('') || '<div style="padding:20px;color:#555;text-align:center;font-size:12px">No rules yet.</div>';
+}
+
+function selectRule(id) {
+  currentRuleId = id;
+  renderRuleList();
+  var rule = rules.find(function(r){return r.id===id;});
+  if (!rule) return;
+  renderEditor(rule);
+}
+
+function renderEditor(rule) {
+  document.getElementById('empty-msg').style.display = 'none';
+  document.getElementById('editor-form').style.display = 'block';
+  document.getElementById('actions-bar').style.display = 'flex';
+
+  var tc = rule.triggerConfig || {};
+  var ac = rule.actionConfig  || {};
+
+  document.getElementById('editor-form').innerHTML =
+    '<div class="section">' +
+    '<div class="section-title">General</div>' +
+    '<div class="field"><label>Rule Name</label><input type="text" id="r-name" value="'+esc(rule.name||'')+'"></div>' +
+    '</div>' +
+
+    '<div class="section">' +
+    '<div class="section-title">⚡ Trigger — When this happens…</div>' +
+    renderTriggerForm(rule.triggerType, tc) +
+    '</div>' +
+
+    '<div class="section">' +
+    '<div class="section-title">🎯 Action — Then do this…</div>' +
+    renderActionForm(rule.actionType, ac) +
+    '</div>';
+}
+
+function renderTriggerForm(type, tc) {
+  var typeSelect = '<div class="field"><label>Trigger Type</label>' +
+    '<select id="trig-type" onchange="refreshEditor()">' +
+    TRIGGERS.map(function(t){return '<option value="'+t.value+'"'+(type===t.value?' selected':'')+'>'+t.label+'</option>';}).join('') +
+    '</select></div>';
+
+  var extra = '';
+  if (type === 'FIELD_CHANGED' || type === 'STATUS_CHANGED') {
+    extra = '<div class="row2">' +
+      '<div class="field"><label>Column Name</label><input type="text" id="trig-col" value="'+esc(tc.column||'Status')+'" placeholder="e.g. Status"></div>' +
+      (type==='FIELD_CHANGED' ?
+        '<div class="field"><label>Operator</label><select id="trig-op">' +
+        OPERATORS.map(function(o){return '<option value="'+o.value+'"'+(tc.operator===o.value?' selected':'')+'>'+o.label+'</option>';}).join('') +
+        '</select></div></div>' +
+        '<div class="field"><label>Value</label><input type="text" id="trig-val" value="'+esc(tc.value||'')+'"></div>'
+      :
+        '<div class="field"><label>New Status Value</label><input type="text" id="trig-val" value="'+esc(tc.value||'Blocked')+'"></div></div>'
+      );
+  } else if (type === 'DATE_REACHED') {
+    extra = '<div class="row2">' +
+      '<div class="field"><label>Date Column</label><input type="text" id="trig-datecol" value="'+esc(tc.dateColumn||'Due Date')+'" placeholder="e.g. Due Date"></div>' +
+      '<div class="field"><label>When</label><select id="trig-when">' +
+      WHEN_OPTIONS.map(function(o){return '<option value="'+o.value+'"'+(tc.when===o.value?' selected':'')+'>'+o.label+'</option>';}).join('') +
+      '</select></div></div>' +
+      '<div class="field"><label>Days (if applicable)</label><input type="text" id="trig-days" value="'+esc(tc.days||'0')+'" placeholder="e.g. 2"></div>';
+  }
+  return typeSelect + extra;
+}
+
+function renderActionForm(type, ac) {
+  var typeSelect = '<div class="field"><label>Action Type</label>' +
+    '<select id="act-type" onchange="refreshEditor()">' +
+    ACTIONS.map(function(a){return '<option value="'+a.value+'"'+(type===a.value?' selected':'')+'>'+a.label+'</option>';}).join('') +
+    '</select></div>';
+
+  var extra = '';
+  var vars  = '<div class="hint">Template variables:</div><div class="tag-vars">' +
+    TEMPLATE_VARS.map(function(v){return '<div class="tag-var" onclick="insertVar(\''+v+'\')">'+v+'</div>';}).join('') + '</div>';
+
+  if (type === 'SEND_EMAIL') {
+    extra = '<div class="field"><label>To (email or {{assigned_to}})</label><input type="text" id="act-to" value="'+esc(ac.to||'{{assigned_to}}')+'"></div>' +
+      '<div class="field"><label>Subject</label><input type="text" id="act-subj" value="'+esc(ac.subject||'Update: {{task_name}}')+'"></div>' +
+      '<div class="field"><label>Body</label><textarea id="act-body">'+esc(ac.body||'Hi,\n\n{{task_name}} needs your attention.\n\n{{sheet_url}}')+'</textarea></div>' + vars;
+  } else if (type === 'CHANGE_STATUS' || type === 'SET_FIELD') {
+    extra = '<div class="row2">' +
+      '<div class="field"><label>Column</label><input type="text" id="act-col" value="'+esc(ac.column||'Status')+'"></div>' +
+      '<div class="field"><label>Value</label><input type="text" id="act-val" value="'+esc(ac.value||'Done')+'"></div></div>';
+  } else if (type === 'ADD_COMMENT') {
+    extra = '<div class="field"><label>Note / Message</label><textarea id="act-msg">'+esc(ac.message||'Automated note: {{task_name}}')+'</textarea></div>' + vars;
+  } else if (type === 'CALL_WEBHOOK') {
+    extra = '<div class="field"><label>Webhook URL</label><input type="text" id="act-url" value="'+esc(ac.url||'')+'"></div>' +
+      '<div class="field"><label>Payload (JSON template)</label><textarea id="act-payload">'+esc(ac.payload||'{"task":"{{task_name}}","status":"{{status}}"}')+'</textarea></div>' + vars;
+  } else if (type === 'LOCK_ROW') {
+    extra = '<div class="hint">The row will be protected from editing after the trigger fires.</div>';
+  }
+  return typeSelect + extra;
+}
+
+function refreshEditor() {
+  var type    = document.getElementById('trig-type') && document.getElementById('trig-type').value;
+  var actType = document.getElementById('act-type') && document.getElementById('act-type').value;
+  var rule = _readFormValues();
+  rule.triggerType = type || rule.triggerType;
+  rule.actionType  = actType || rule.actionType;
+  renderEditor(rule);
+}
+
+function insertVar(v) {
+  var active = document.activeElement;
+  if (active && (active.tagName==='INPUT'||active.tagName==='TEXTAREA')) {
+    var s=active.selectionStart,e=active.selectionEnd;
+    active.value=active.value.slice(0,s)+v+active.value.slice(e);
+    active.selectionStart=active.selectionEnd=s+v.length;
+    active.focus();
+  }
+}
+
+function newRule() {
+  var id = 'auto_' + Date.now();
+  var r = {id:id,name:'New Rule',enabled:true,
+    triggerType:'STATUS_CHANGED',triggerConfig:{column:'Status',value:'Blocked'},
+    actionType:'SEND_EMAIL',actionConfig:{to:'{{assigned_to}}',subject:'Task Blocked: {{task_name}}',body:''}};
+  rules.unshift(r);
+  currentRuleId = id;
+  renderRuleList();
+  renderEditor(r);
+}
+
+function _readFormValues() {
+  function v(id){var el=document.getElementById(id);return el?el.value:'';}
+  var tType = v('trig-type');
+  var aType = v('act-type');
+  var tc={}, ac={};
+  if (tType==='FIELD_CHANGED'){tc={column:v('trig-col'),operator:v('trig-op'),value:v('trig-val')};}
+  else if (tType==='STATUS_CHANGED'){tc={column:v('trig-col')||'Status',value:v('trig-val')};}
+  else if (tType==='DATE_REACHED'){tc={dateColumn:v('trig-datecol'),when:v('trig-when'),days:v('trig-days')};}
+  if (aType==='SEND_EMAIL'){ac={to:v('act-to'),subject:v('act-subj'),body:v('act-body')};}
+  else if (aType==='CHANGE_STATUS'||aType==='SET_FIELD'){ac={column:v('act-col'),value:v('act-val')};}
+  else if (aType==='ADD_COMMENT'){ac={message:v('act-msg')};}
+  else if (aType==='CALL_WEBHOOK'){ac={url:v('act-url'),payload:v('act-payload')};}
+  return {id:currentRuleId,name:v('r-name'),enabled:true,
+    triggerType:tType,triggerConfig:tc,actionType:aType,actionConfig:ac};
+}
+
+function saveRule() {
+  var rule = _readFormValues();
+  if (!rule.name) { alert('Please enter a rule name.'); return; }
+  google.script.run.withSuccessHandler(function() {
+    // Update local
+    var idx = rules.findIndex(function(r){return r.id===rule.id;});
+    if (idx>=0) rules[idx]=rule; else rules.unshift(rule);
+    renderRuleList();
+    alert('✅ Rule saved!');
+  }).saveAutomation(rule);
+}
+
+function deleteRule() {
+  if (!currentRuleId || !confirm('Delete this rule?')) return;
+  google.script.run.withSuccessHandler(function() {
+    rules = rules.filter(function(r){return r.id!==currentRuleId;});
+    currentRuleId = null;
+    clearEditor();
+    renderRuleList();
+  }).deleteAutomation(currentRuleId);
+}
+
+function toggleRule(id, enabled) {
+  var rule = rules.find(function(r){return r.id===id;});
+  if (rule) rule.enabled = enabled;
+  google.script.run.toggleAutomation(id, enabled);
+}
+
+function clearEditor() {
+  currentRuleId = null;
+  document.getElementById('empty-msg').style.display = 'block';
+  document.getElementById('editor-form').style.display = 'none';
+  document.getElementById('actions-bar').style.display = 'none';
+  renderRuleList();
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

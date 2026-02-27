@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Calendar View</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#e8eaed;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+  #toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#16213e;border-bottom:1px solid #0f3460;flex-shrink:0;}
+  #toolbar h2{font-size:15px;color:#4fc3f7;margin-right:auto;}
+  .tb-btn{background:#0f3460;border:none;color:#e8eaed;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;}
+  .tb-btn:hover{background:#1a73e8;}
+  .month-label{font-size:16px;font-weight:700;min-width:160px;text-align:center;}
+  select{background:#0f3460;border:1px solid #1a73e8;color:#e8eaed;padding:5px 10px;border-radius:6px;font-size:12px;}
+
+  #calendar-wrapper{flex:1;display:flex;flex-direction:column;padding:12px;gap:0;overflow:hidden;}
+
+  /* Day-of-week header */
+  #day-headers{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px;}
+  .day-hdr{text-align:center;font-size:11px;font-weight:700;color:#9aa0a6;padding:4px 0;}
+
+  /* Grid */
+  #cal-grid{flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:2px;}
+  .day-cell{background:#0d1b2a;border-radius:8px;padding:6px;overflow:hidden;border:1px solid #0f3460;display:flex;flex-direction:column;}
+  .day-cell.today{border-color:#1a73e8;background:#0f1e35;}
+  .day-cell.other-month{opacity:.35;}
+  .day-num{font-size:12px;font-weight:700;margin-bottom:4px;color:#9aa0a6;}
+  .day-cell.today .day-num{color:#4fc3f7;}
+  .cal-events{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+  .cal-event{padding:2px 6px;border-radius:4px;font-size:10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;}
+  .cal-event:hover{filter:brightness(1.2);}
+  .cal-event.type-start{background:#1a73e8;color:#fff;}
+  .cal-event.type-end{background:#ef5350;color:#fff;}
+  .cal-event.type-due{background:#ffa726;color:#1a1a2e;}
+  .cal-event.type-ongoing{background:#0d3060;color:#90caf9;border-left:2px solid #1a73e8;}
+  .more-badge{font-size:10px;color:#9aa0a6;padding:1px 4px;cursor:pointer;}
+
+  /* Week view */
+  #week-grid{flex:1;display:grid;grid-template-columns:50px repeat(7,1fr);overflow-y:auto;}
+  .week-time{font-size:10px;color:#9aa0a6;text-align:right;padding-right:8px;padding-top:2px;}
+  .week-col{border-left:1px solid #0f3460;position:relative;min-height:40px;}
+  .week-hdr{font-size:11px;text-align:center;padding:6px 2px;font-weight:700;border-bottom:1px solid #0f3460;border-left:1px solid #0f3460;}
+  .week-hdr.today{color:#4fc3f7;}
+  .week-hdr-blank{border-bottom:1px solid #0f3460;}
+  .hour-row{height:48px;border-bottom:1px solid rgba(255,255,255,.04);}
+  .week-event{position:absolute;left:1px;right:1px;background:#1a73e8;border-radius:4px;padding:2px 4px;font-size:10px;overflow:hidden;cursor:pointer;z-index:1;}
+
+  /* Tooltip */
+  #tooltip{position:fixed;background:#16213e;border:1px solid #1a73e8;border-radius:8px;padding:10px 14px;font-size:12px;max-width:240px;pointer-events:none;z-index:999;display:none;line-height:1.6;}
+  #tooltip h4{color:#4fc3f7;margin-bottom:4px;}
+
+  /* Legend */
+  #legend{display:flex;gap:14px;padding:4px 12px;background:#16213e;border-top:1px solid #0f3460;flex-shrink:0;}
+  .legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#9aa0a6;}
+  .legend-dot{width:10px;height:10px;border-radius:2px;}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button class="tb-btn" onclick="navigate(-1)">◀</button>
+  <div class="month-label" id="month-label"></div>
+  <button class="tb-btn" onclick="navigate(1)">▶</button>
+  <button class="tb-btn" onclick="goToday()">Today</button>
+  <select id="viewMode" onchange="switchView()">
+    <option value="month">Month</option>
+    <option value="week">Week</option>
+  </select>
+  <select id="filterAssignee" onchange="renderCurrent()">
+    <option value="">All Assignees</option>
+  </select>
+  <h2>📅 Calendar View</h2>
+  <button class="tb-btn" onclick="google.script.host.close()">✕ Close</button>
+</div>
+
+<div id="calendar-wrapper">
+  <div id="day-headers">
+    <div class="day-hdr">Sun</div><div class="day-hdr">Mon</div><div class="day-hdr">Tue</div>
+    <div class="day-hdr">Wed</div><div class="day-hdr">Thu</div><div class="day-hdr">Fri</div><div class="day-hdr">Sat</div>
+  </div>
+  <div id="cal-grid"></div>
+  <div id="week-grid" style="display:none;"></div>
+</div>
+
+<div id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#1a73e8"></div>Start Date</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>End/Due Date</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffa726"></div>Deadline</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#0d3060;border-left:2px solid #1a73e8"></div>Duration</div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+var allTasks = [];
+var currentYear, currentMonth;
+var currentWeekStart;
+var view = 'month';
+
+function init() {
+  var now = new Date();
+  currentYear = now.getFullYear();
+  currentMonth = now.getMonth();
+  currentWeekStart = startOfWeek(now);
+
+  google.script.run
+    .withSuccessHandler(function(rows) {
+      allTasks = rows.map(function(r) {
+        return {
+          id:       r._rowIndex,
+          title:    r['Task Name'] || r[Object.keys(r).filter(function(k){return !k.startsWith('_');})[0]] || '(unnamed)',
+          start:    parseDate(r['Start Date']),
+          end:      parseDate(r['End Date'] || r['Finish Date']),
+          due:      parseDate(r['Due Date']),
+          status:   r['Status'] || '',
+          assignee: r['Assigned To'] || '',
+          priority: r['Priority'] || ''
+        };
+      }).filter(function(t){ return t.start || t.end || t.due; });
+
+      // Assignee filter
+      var sel = document.getElementById('filterAssignee');
+      var assignees = [...new Set(allTasks.map(function(t){return t.assignee;}).filter(Boolean))];
+      assignees.forEach(function(a){
+        var opt = document.createElement('option');
+        opt.value = a; opt.text = a; sel.appendChild(opt);
+      });
+      renderCurrent();
+    })
+    .getRowTree(SpreadsheetApp.getActiveSheet());
+}
+
+function parseDate(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  var d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+
+function renderCurrent() {
+  if (view === 'month') renderMonth();
+  else renderWeek();
+}
+
+// ── Month view ────────────────────────────────────────────────────────────────
+function renderMonth() {
+  document.getElementById('cal-grid').style.display = 'grid';
+  document.getElementById('week-grid').style.display = 'none';
+  document.getElementById('day-headers').style.display = 'grid';
+
+  var lbl = new Date(currentYear, currentMonth, 1)
+    .toLocaleDateString('en-SG',{month:'long',year:'numeric'});
+  document.getElementById('month-label').textContent = lbl;
+
+  var assignee = document.getElementById('filterAssignee').value;
+  var tasks = assignee ? allTasks.filter(function(t){return t.assignee===assignee;}) : allTasks;
+
+  var firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  var daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  // Build event map: dateKey -> events[]
+  var evtMap = {};
+  tasks.forEach(function(t) {
+    function addEvt(d, type) {
+      if (!d) return;
+      d = new Date(d); d.setHours(0,0,0,0);
+      var k = d.toISOString().slice(0,10);
+      if (!evtMap[k]) evtMap[k] = [];
+      evtMap[k].push({task:t, type:type});
+    }
+    addEvt(t.start, 'type-start');
+    addEvt(t.end, 'type-end');
+    if (t.due && (!t.end || t.due.toISOString() !== t.end.toISOString())) addEvt(t.due, 'type-due');
+
+    // Ongoing spans
+    if (t.start && t.end) {
+      var cursor = new Date(t.start); cursor.setHours(0,0,0,0);
+      var endD = new Date(t.end); endD.setHours(0,0,0,0);
+      cursor.setDate(cursor.getDate() + 1);
+      while (cursor < endD) {
+        var k2 = cursor.toISOString().slice(0,10);
+        if (!evtMap[k2]) evtMap[k2] = [];
+        // avoid duplicate start/end markers
+        var already = evtMap[k2].some(function(e){return e.task===t;});
+        if (!already) evtMap[k2].push({task:t, type:'type-ongoing'});
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+  });
+
+  var grid = document.getElementById('cal-grid');
+  grid.innerHTML = '';
+
+  // Leading blanks
+  for (var b=0;b<firstDay;b++) {
+    var blank = document.createElement('div');
+    blank.className = 'day-cell other-month';
+    // prev month days
+    var prevDays = new Date(currentYear, currentMonth, 0).getDate();
+    blank.innerHTML = '<div class="day-num">'+(prevDays-firstDay+b+1)+'</div>';
+    grid.appendChild(blank);
+  }
+
+  for (var d=1;d<=daysInMonth;d++) {
+    var cell = document.createElement('div');
+    var cellDate = new Date(currentYear, currentMonth, d);
+    cellDate.setHours(0,0,0,0);
+    var isToday = cellDate.getTime() === today.getTime();
+    cell.className = 'day-cell' + (isToday ? ' today' : '');
+
+    var k = cellDate.toISOString().slice(0,10);
+    var evts = evtMap[k] || [];
+
+    cell.innerHTML = '<div class="day-num">'+d+'</div>' +
+      '<div class="cal-events">' +
+      evts.slice(0,3).map(function(e) {
+        return '<div class="cal-event '+e.type+'" title="'+esc(e.task.title)+'" onclick="showTooltip(event, '+e.task.id+')">' +
+          typePrefix(e.type) + esc(e.task.title) + '</div>';
+      }).join('') +
+      (evts.length > 3 ? '<div class="more-badge">+' + (evts.length-3) + ' more</div>' : '') +
+      '</div>';
+    grid.appendChild(cell);
+  }
+
+  // Trailing blanks
+  var total = firstDay + daysInMonth;
+  var trailing = total % 7 === 0 ? 0 : 7 - (total % 7);
+  for (var t2=1;t2<=trailing;t2++) {
+    var blank2 = document.createElement('div');
+    blank2.className = 'day-cell other-month';
+    blank2.innerHTML = '<div class="day-num">'+t2+'</div>';
+    grid.appendChild(blank2);
+  }
+}
+
+// ── Week view ─────────────────────────────────────────────────────────────────
+function renderWeek() {
+  document.getElementById('cal-grid').style.display = 'none';
+  document.getElementById('day-headers').style.display = 'none';
+  var wg = document.getElementById('week-grid');
+  wg.style.display = 'grid';
+  wg.innerHTML = '';
+
+  var today = new Date(); today.setHours(0,0,0,0);
+  var days = [];
+  for (var i=0;i<7;i++) {
+    var d = new Date(currentWeekStart);
+    d.setDate(d.getDate()+i);
+    days.push(d);
+  }
+
+  var startLabel = days[0].toLocaleDateString('en-SG',{month:'short',day:'numeric'});
+  var endLabel   = days[6].toLocaleDateString('en-SG',{month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('month-label').textContent = startLabel + ' – ' + endLabel;
+
+  var HOURS = 24;
+  var assignee = document.getElementById('filterAssignee').value;
+  var tasks = assignee ? allTasks.filter(function(t){return t.assignee===assignee;}) : allTasks;
+
+  // Header row
+  var blank = document.createElement('div');
+  blank.className = 'week-hdr-blank';
+  blank.style.gridColumn = '1';
+  blank.style.gridRow = '1';
+  wg.appendChild(blank);
+
+  days.forEach(function(d,i) {
+    var isToday = d.getTime()===today.getTime();
+    var hdr = document.createElement('div');
+    hdr.className = 'week-hdr' + (isToday?' today':'');
+    hdr.style.gridColumn = (i+2)+'';
+    hdr.style.gridRow = '1';
+    hdr.textContent = d.toLocaleDateString('en-SG',{weekday:'short',day:'numeric',month:'short'});
+    wg.appendChild(hdr);
+  });
+
+  // Hour labels + rows
+  for (var h=0;h<HOURS;h++) {
+    var label = document.createElement('div');
+    label.className = 'week-time';
+    label.style.gridColumn = '1';
+    label.style.gridRow = (h+2)+'';
+    label.textContent = h===0?'':h+':00';
+    wg.appendChild(label);
+
+    for (var ci=0;ci<7;ci++) {
+      var cell = document.createElement('div');
+      cell.className = 'week-col hour-row';
+      cell.style.gridColumn = (ci+2)+'';
+      cell.style.gridRow = (h+2)+'';
+      wg.appendChild(cell);
+    }
+  }
+
+  // Events (all-day style at hour 0 row)
+  days.forEach(function(d,i) {
+    var dk = d.toISOString().slice(0,10);
+    tasks.forEach(function(t) {
+      var dates = [];
+      if (t.start) dates.push({date:t.start,type:'type-start'});
+      if (t.end) dates.push({date:t.end,type:'type-end'});
+      if (t.due) dates.push({date:t.due,type:'type-due'});
+      dates.forEach(function(ev) {
+        var evk = new Date(ev.date); evk.setHours(0,0,0,0);
+        if (evk.toISOString().slice(0,10)===dk) {
+          var el = document.createElement('div');
+          el.className = 'week-event';
+          el.style.gridColumn = (i+2)+'';
+          el.style.gridRow = '2';
+          el.style.background = ev.type==='type-start'?'#1a73e8':ev.type==='type-end'?'#ef5350':'#ffa726';
+          el.style.color = ev.type==='type-due'?'#1a1a2e':'#fff';
+          el.textContent = typePrefix(ev.type) + t.title;
+          el.title = t.title;
+          wg.appendChild(el);
+        }
+      });
+    });
+  });
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function navigate(dir) {
+  if (view === 'month') {
+    currentMonth += dir;
+    if (currentMonth < 0){currentMonth=11;currentYear--;}
+    if (currentMonth > 11){currentMonth=0;currentYear++;}
+  } else {
+    currentWeekStart.setDate(currentWeekStart.getDate() + dir * 7);
+  }
+  renderCurrent();
+}
+
+function goToday() {
+  var now = new Date();
+  currentYear = now.getFullYear(); currentMonth = now.getMonth();
+  currentWeekStart = startOfWeek(now);
+  renderCurrent();
+}
+
+function switchView() {
+  view = document.getElementById('viewMode').value;
+  renderCurrent();
+}
+
+function startOfWeek(d) {
+  var result = new Date(d);
+  result.setDate(result.getDate() - result.getDay());
+  result.setHours(0,0,0,0);
+  return result;
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+function showTooltip(event, taskId) {
+  var t = allTasks.find(function(x){return x.id===taskId;});
+  if (!t) return;
+  var tip = document.getElementById('tooltip');
+  tip.style.display = 'block';
+  tip.innerHTML = '<h4>' + esc(t.title) + '</h4>' +
+    (t.assignee ? '👤 ' + esc(t.assignee) + '<br>' : '') +
+    (t.status   ? '🔘 ' + esc(t.status)   + '<br>' : '') +
+    (t.priority ? '🎯 ' + esc(t.priority) + '<br>' : '') +
+    (t.start    ? '▶ Start: ' + fmtDate(t.start) + '<br>' : '') +
+    (t.end      ? '⏹ End: '  + fmtDate(t.end)   + '<br>' : '') +
+    (t.due      ? '⚠️ Due: '  + fmtDate(t.due)   : '');
+  tip.style.left  = Math.min(event.clientX + 12, window.innerWidth - 260) + 'px';
+  tip.style.top   = Math.min(event.clientY + 12, window.innerHeight - 160) + 'px';
+  event.stopPropagation();
+}
+
+document.addEventListener('click', function(){ document.getElementById('tooltip').style.display='none'; });
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function typePrefix(t) {
+  return {
+    'type-start':'▶ ','type-end':'⏹ ','type-due':'⚠ ','type-ongoing':'  '
+  }[t] || '';
+}
+function fmtDate(d) { return new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'numeric'}); }
+function esc(s)     { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
