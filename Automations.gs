@@ -70,7 +70,7 @@ function _seedExampleRules(sheet) {
  * Called from the menu: opens the automation builder dialog.
  */
 function openAutomationBuilder() {
-  var html = HtmlService.createHtmlOutputFromFile('Automations')
+  var html = HtmlService.createHtmlOutputFromFile('Automationshtml')
     .setTitle('Automation Rules')
     .setWidth(900)
     .setHeight(600);
