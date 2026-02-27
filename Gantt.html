@@ -189,7 +189,7 @@ function loadData() {
     .withFailureHandler(function(err) {
       document.getElementById('task-list').innerHTML = '<div class="loading">Error: ' + err + '</div>';
     })
-    .getRowTree(SpreadsheetApp.getActiveSheet());
+    .getRowTree();
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
